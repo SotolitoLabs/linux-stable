@@ -25,6 +25,9 @@
 
 #include <asm/alternative-asm.h>
 
+#define ASM_PAX_OPEN_USERLAND
+#define ASM_PAX_CLOSE_USERLAND
+
 #ifdef CONFIG_X86_SMAP
 
 #define ASM_CLAC \
@@ -40,9 +43,29 @@
 
 #endif /* CONFIG_X86_SMAP */
 
+#define ASM_USER_ACCESS_BEGIN	ASM_PAX_OPEN_USERLAND; ASM_STAC
+#define ASM_USER_ACCESS_END	ASM_CLAC; ASM_PAX_CLOSE_USERLAND
+
 #else /* __ASSEMBLY__ */
 
 #include <asm/alternative.h>
+
+#define __HAVE_ARCH_PAX_OPEN_USERLAND
+#define __HAVE_ARCH_PAX_CLOSE_USERLAND
+
+extern void __pax_open_userland(void);
+static __always_inline unsigned long pax_open_userland(void)
+{
+
+	return 0;
+}
+
+extern void __pax_close_userland(void);
+static __always_inline unsigned long pax_close_userland(void)
+{
+
+	return 0;
+}
 
 #ifdef CONFIG_X86_SMAP
 

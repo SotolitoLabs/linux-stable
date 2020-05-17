@@ -47,7 +47,7 @@ struct ldt_struct {
 	 * allocations, but it's not worth trying to optimize.
 	 */
 	struct desc_struct *entries;
-	int size;
+	unsigned int size;
 };
 
 /*
@@ -59,6 +59,23 @@ void destroy_context_ldt(struct mm_struct *mm);
 static inline int init_new_context_ldt(struct task_struct *tsk,
 				       struct mm_struct *mm)
 {
+	if (tsk == current) {
+		mm->context.vdso = 0;
+
+#ifdef CONFIG_X86_32
+#if defined(CONFIG_PAX_PAGEEXEC) || defined(CONFIG_PAX_SEGMEXEC)
+		mm->context.user_cs_base = 0UL;
+		mm->context.user_cs_limit = ~0UL;
+
+#if defined(CONFIG_PAX_PAGEEXEC) && defined(CONFIG_SMP)
+		cpumask_clear(&mm->context.cpu_user_cs_mask);
+#endif
+
+#endif
+#endif
+
+	}
+
 	return 0;
 }
 static inline void destroy_context_ldt(struct mm_struct *mm) {}
@@ -99,6 +116,7 @@ static inline void load_mm_ldt(struct mm_struct *mm)
 
 static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {
+
 	if (this_cpu_read(cpu_tlbstate.state) == TLBSTATE_OK)
 		this_cpu_write(cpu_tlbstate.state, TLBSTATE_LAZY);
 }

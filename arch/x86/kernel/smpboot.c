@@ -94,7 +94,7 @@ EXPORT_PER_CPU_SYMBOL(cpu_core_map);
 DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_llc_shared_map);
 
 /* Per CPU bogomips and other parameters */
-DEFINE_PER_CPU_READ_MOSTLY(struct cpuinfo_x86, cpu_info);
+DEFINE_PER_CPU_READ_ONLY(struct cpuinfo_x86, cpu_info);
 EXPORT_PER_CPU_SYMBOL(cpu_info);
 
 /* Logical package management. We might want to allocate that dynamically */
@@ -216,14 +216,13 @@ static void notrace start_secondary(void *unused)
 
 	enable_start_cpu0 = 0;
 
-#ifdef CONFIG_X86_32
+	/* otherwise gcc will move up smp_processor_id before the cpu_init */
+	barrier();
+
 	/* switch away from the initial page table */
 	load_cr3(swapper_pg_dir);
 	__flush_tlb_all();
-#endif
 
-	/* otherwise gcc will move up smp_processor_id before the cpu_init */
-	barrier();
 	/*
 	 * Check TSC synchronization with the BP:
 	 */
@@ -923,13 +922,11 @@ void common_cpu_up(unsigned int cpu, struct task_struct *idle)
 	per_cpu(current_task, cpu) = idle;
 
 #ifdef CONFIG_X86_32
-	/* Stack for startup_32 can be just as for start_secondary onwards */
 	irq_ctx_init(cpu);
-	per_cpu(cpu_current_top_of_stack, cpu) =
-		(unsigned long)task_stack_page(idle) + THREAD_SIZE;
 #else
 	initial_gs = per_cpu_offset(cpu);
 #endif
+	per_cpu(cpu_current_top_of_stack, cpu) = (unsigned long)task_stack_page(idle) - 16 + THREAD_SIZE;
 }
 
 /*
@@ -950,9 +947,11 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 	unsigned long timeout;
 
 	idle->thread.sp = (unsigned long) (((struct pt_regs *)
-			  (THREAD_SIZE +  task_stack_page(idle))) - 1);
+			  (THREAD_SIZE - 16 + task_stack_page(idle))) - 1);
 
+	pax_open_kernel();
 	early_gdt_descr.address = (unsigned long)get_cpu_gdt_table(cpu);
+	pax_close_kernel();
 	initial_code = (unsigned long)start_secondary;
 	initial_stack  = idle->thread.sp;
 

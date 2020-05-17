@@ -88,7 +88,9 @@ static inline void cr4_set_bits(unsigned long mask)
 {
 	unsigned long cr4;
 
+//	BUG_ON(!arch_irqs_disabled());
 	cr4 = this_cpu_read(cpu_tlbstate.cr4);
+	BUG_ON(cr4 != __read_cr4());
 	if ((cr4 | mask) != cr4) {
 		cr4 |= mask;
 		this_cpu_write(cpu_tlbstate.cr4, cr4);
@@ -101,7 +103,9 @@ static inline void cr4_clear_bits(unsigned long mask)
 {
 	unsigned long cr4;
 
+//	BUG_ON(!arch_irqs_disabled());
 	cr4 = this_cpu_read(cpu_tlbstate.cr4);
+	BUG_ON(cr4 != __read_cr4());
 	if ((cr4 & ~mask) != cr4) {
 		cr4 &= ~mask;
 		this_cpu_write(cpu_tlbstate.cr4, cr4);
@@ -112,6 +116,7 @@ static inline void cr4_clear_bits(unsigned long mask)
 /* Read the CR4 shadow. */
 static inline unsigned long cr4_read_shadow(void)
 {
+//	BUG_ON(!arch_irqs_disabled());
 	return this_cpu_read(cpu_tlbstate.cr4);
 }
 
@@ -134,6 +139,11 @@ static inline void cr4_set_bits_and_update_boot(unsigned long mask)
 
 static inline void __native_flush_tlb(void)
 {
+	if (static_cpu_has(X86_FEATURE_INVPCID)) {
+		invpcid_flush_all_nonglobals();
+		return;
+	}
+
 	/*
 	 * If current->mm == NULL then we borrow a mm which may change during a
 	 * task switch and therefore we must not be preempted while we write CR3
@@ -149,6 +159,7 @@ static inline void __native_flush_tlb_global_irq_disabled(void)
 	unsigned long cr4;
 
 	cr4 = this_cpu_read(cpu_tlbstate.cr4);
+	BUG_ON(cr4 != __read_cr4());
 	/* clear PGE */
 	native_write_cr4(cr4 & ~X86_CR4_PGE);
 	/* write old PGE again and flush TLBs */
@@ -182,6 +193,13 @@ static inline void __native_flush_tlb_global(void)
 
 static inline void __native_flush_tlb_single(unsigned long addr)
 {
+	if (static_cpu_has(X86_FEATURE_INVPCID)) {
+		unsigned long pcid = PCID_KERNEL;
+
+		invpcid_flush_one(pcid, addr);
+		return;
+	}
+
 	asm volatile("invlpg (%0)" ::"r" (addr) : "memory");
 }
 
